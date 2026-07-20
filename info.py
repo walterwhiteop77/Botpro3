@@ -100,7 +100,10 @@ LANDSCAPE_POSTER = bool(environ.get('LANDSCAPE_POSTER', True)) # Shows landscape
 # ============================
 IS_FILE_LIMIT = is_enabled(environ.get('IS_FILE_LIMIT', "True"), False)  # Enable Or Disable File Limit
 FILES_LIMIT = int(environ.get("FREE_FILES", "6"))  # No. of Files User Gets For Free
-
+# External bot username used to build the "ᴅᴏᴡɴʟᴏᴀᴅ ɴᴏᴡ" deep-link shown on the
+# file-limit-reached message. The link is:
+# https://t.me/<EXTERNAL_FILE_BOT_USERNAME>?start=getfile-<slugified-search>
+EXTERNAL_FILE_BOT_USERNAME = environ.get('EXTERNAL_FILE_BOT_USERNAME', 'Movie_seriesflixbot')
 # ============================
 # Verification Settings
 # ============================
