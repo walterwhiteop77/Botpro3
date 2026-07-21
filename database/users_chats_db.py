@@ -30,6 +30,9 @@ class Database:
         self.filename_col = self.db.filename
         self.movie_updates = self.db.movie_updates
         self.connection = self.db.connections
+        # Allow-list for small groups that would otherwise be auto-left
+        # because their member count is below MIN_GROUP_MEMBERS.
+        self.small_group_allowlist = self.db.small_group_allowlist
 
     async def add_name(self, filename):
         if await self.movie_updates.find_one({'_id': filename}):
@@ -220,6 +223,25 @@ class Database:
     
     async def get_all_chats(self):
         return self.grp.find({})
+
+    # ----- small-group allow-list -----
+    async def allow_small_group(self, chat_id: int, title: str = None):
+        await self.small_group_allowlist.update_one(
+            {"chat_id": int(chat_id)},
+            {"$set": {"chat_id": int(chat_id), "title": title or ""}},
+            upsert=True,
+        )
+
+    async def disallow_small_group(self, chat_id: int):
+        await self.small_group_allowlist.delete_one({"chat_id": int(chat_id)})
+
+    async def is_small_group_allowed(self, chat_id: int) -> bool:
+        doc = await self.small_group_allowlist.find_one({"chat_id": int(chat_id)})
+        return bool(doc)
+
+    async def list_allowed_small_groups(self) -> list:
+        cursor = self.small_group_allowlist.find({})
+        return [d async for d in cursor]
 
     async def get_db_size(self):
         return (await self.db.command("dbstats"))['dataSize']
