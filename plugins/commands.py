@@ -379,23 +379,23 @@ async def start(client, message):
         # Now, await the file details task
         files_ = await file_details_task
 
-        # ===== File Limit (ported from SiliconBotz) =====
+        # ===== File Limit (per-group override supported) =====
         try:
+            fl_enabled, fl_limit = filelimitdb.get_effective_limit(grp_id)
             if (
-                IS_FILE_LIMIT
-                and FILES_LIMIT > 0
+                fl_enabled
+                and fl_limit > 0
                 and not data.startswith("allfiles")
                 and not await db.has_premium_access(user_id)
             ):
-                current_file_count = filelimitdb.get_file_limit(user_id)
-                if current_file_count >= FILES_LIMIT:
+                current_file_count = filelimitdb.get_file_limit(user_id, grp_id)
+                if current_file_count >= fl_limit:
                     try:
                         if sticker:
                             await sticker.delete()
                     except Exception:
                         pass
                     # Build external "Download Now" deep-link from the user's last search text.
-                    # Example: "Blue Box 2024" -> https://t.me/<bot>?start=getfile-Blue-Box-2024
                     raw_query = temp.LAST_SEARCH.get(user_id, "") or ""
                     slug = re.sub(r"\s+", "-", raw_query.strip())
                     slug = re.sub(r"[^A-Za-z0-9\-]", "", slug).strip("-")
@@ -411,7 +411,7 @@ async def start(client, message):
                     limit_buttons.append([
                         InlineKeyboardButton("💎 ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", callback_data="premium_info")
                     ])
-                    limit_text = script.FILE_LIMIT_TEXT.format(message.from_user.mention, FILES_LIMIT)
+                    limit_text = script.FILE_LIMIT_TEXT.format(message.from_user.mention, fl_limit)
                     try:
                         ads_string, ads_name, _ads_imp = await mdb.get_advirtisment()
                         if ads_string and ads_name:
@@ -430,7 +430,7 @@ async def start(client, message):
                         disable_web_page_preview=True,
                     )
                     return
-                filelimitdb.increment_file_limit(user_id)
+                filelimitdb.increment_file_limit(user_id, grp_id)
         except Exception as e:
             logger.error("File-limit check failed: %s", e)
         # ===== /File Limit =====

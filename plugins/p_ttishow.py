@@ -6,7 +6,7 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInvalid
 from pyrogram.errors import ChatAdminRequired
-from info import ADMINS, MULTIPLE_DB, LOG_CHANNEL, OWNER_LNK, MELCOW_PHOTO
+from info import ADMINS, MULTIPLE_DB, LOG_CHANNEL, OWNER_LNK, MELCOW_PHOTO, LEAVE_SMALL_GROUPS, MIN_GROUP_MEMBERS
 from database.users_chats_db import db
 from database.ia_filterdb import Media, Media2, db as db_stats, db2 as db2_stats, client, client2
 from utils import get_size, temp, get_settings, get_readable_time
@@ -21,10 +21,53 @@ logger = logging.getLogger(__name__)
 async def save_group(bot, message):
     dreamx_check = [u.id for u in message.new_chat_members]
     if temp.ME in dreamx_check:
+        total = 0
+        try:
+            total = await bot.get_chat_members_count(message.chat.id)
+        except Exception as e:
+            logger.error("member count failed: %s", e)
+
+        # ---- auto-leave small groups (configurable + allow-list) ----
+        try:
+            if (
+                LEAVE_SMALL_GROUPS
+                and MIN_GROUP_MEMBERS > 0
+                and total
+                and total < MIN_GROUP_MEMBERS
+                and not await db.is_small_group_allowed(message.chat.id)
+            ):
+                buttons = [[InlineKeyboardButton('📌 ᴄᴏɴᴛᴀᴄᴛ ꜱᴜᴘᴘᴏʀᴛ 📌', url=OWNER_LNK)]]
+                try:
+                    await message.reply_text(
+                        text=(
+                            f"<b>👋 ᴛʜɪs ɢʀᴏᴜᴘ ʜᴀs ᴏɴʟʏ <code>{total}</code> ᴍᴇᴍʙᴇʀs.\n"
+                            f"ɪ ʟᴇᴀᴠᴇ ɢʀᴏᴜᴘs ʙᴇʟᴏᴡ <code>{MIN_GROUP_MEMBERS}</code> ᴍᴇᴍʙᴇʀs.\n\n"
+                            "ᴄᴏɴᴛᴀᴄᴛ ᴍʏ ᴏᴡɴᴇʀ ᴛᴏ ᴀʟʟᴏᴡ ᴛʜɪs ɢʀᴏᴜᴘ.</b>"
+                        ),
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                except Exception:
+                    pass
+                try:
+                    await bot.send_message(
+                        LOG_CHANNEL,
+                        f"<b>#SmallGroupLeave</b>\n\n"
+                        f"<b>Title:</b> {message.chat.title}\n"
+                        f"<b>ID:</b> <code>{message.chat.id}</code>\n"
+                        f"<b>Members:</b> {total} (min: {MIN_GROUP_MEMBERS})",
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                except Exception:
+                    pass
+                await bot.leave_chat(message.chat.id)
+                return
+        except Exception as e:
+            logger.error("small-group leave check failed: %s", e)
+
         if not await db.get_chat(message.chat.id):
-            total=await bot.get_chat_members_count(message.chat.id)
-            dreamx_botz = message.from_user.mention if message.from_user else "Anonymous" 
-            await bot.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, dreamx_botz))       
+            dreamx_botz = message.from_user.mention if message.from_user else "Anonymous"
+            await bot.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, dreamx_botz))
             await db.add_chat(message.chat.id, message.chat.title)
         if message.chat.id in temp.BANNED_CHATS:
 
@@ -336,3 +379,63 @@ async def group_commands(client, message):
 async def admin_commands(client, message):
     await message.reply_text(script.ADMIN_CMD, disable_web_page_preview=True)
     
+
+# ===== Small-group allow-list admin commands =====
+@Client.on_message(filters.command('allowgroup') & filters.user(ADMINS))
+async def _allow_group(bot, message):
+    chat_id = None
+    title = None
+    if len(message.command) >= 2:
+        try:
+            chat_id = int(message.command[1])
+        except ValueError:
+            return await message.reply_text("<b>❌ ᴜsᴀɢᴇ:</b> <code>/allowgroup [chat_id]</code>", parse_mode=enums.ParseMode.HTML)
+    elif message.chat and message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        chat_id = message.chat.id
+        title = message.chat.title
+    else:
+        return await message.reply_text("<b>❌ ᴜsᴀɢᴇ:</b> <code>/allowgroup &lt;chat_id&gt;</code>", parse_mode=enums.ParseMode.HTML)
+    if not title:
+        try:
+            ch = await bot.get_chat(chat_id)
+            title = ch.title
+        except Exception:
+            title = ""
+    await db.allow_small_group(chat_id, title)
+    await message.reply_text(
+        f"<b>✅ ɢʀᴏᴜᴘ ᴀʟʟᴏᴡᴇᴅ:</b> <code>{chat_id}</code>\n<b>ᴛɪᴛʟᴇ:</b> {title or 'N/A'}",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command('disallowgroup') & filters.user(ADMINS))
+async def _disallow_group(bot, message):
+    chat_id = None
+    if len(message.command) >= 2:
+        try:
+            chat_id = int(message.command[1])
+        except ValueError:
+            return await message.reply_text("<b>❌ ᴜsᴀɢᴇ:</b> <code>/disallowgroup [chat_id]</code>", parse_mode=enums.ParseMode.HTML)
+    elif message.chat and message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        chat_id = message.chat.id
+    else:
+        return await message.reply_text("<b>❌ ᴜsᴀɢᴇ:</b> <code>/disallowgroup &lt;chat_id&gt;</code>", parse_mode=enums.ParseMode.HTML)
+    await db.disallow_small_group(chat_id)
+    await message.reply_text(
+        f"<b>✅ ɢʀᴏᴜᴘ ʀᴇᴍᴏᴠᴇᴅ ꜰʀᴏᴍ ᴀʟʟᴏᴡ-ʟɪsᴛ:</b> <code>{chat_id}</code>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command('allowedgroups') & filters.user(ADMINS))
+async def _list_allowed_groups(bot, message):
+    rows = await db.list_allowed_small_groups()
+    if not rows:
+        return await message.reply_text(
+            "<b>ℹ️ ɴᴏ ɢʀᴏᴜᴘs ɪɴ ᴀʟʟᴏᴡ-ʟɪsᴛ.</b>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    lines = [f"<b>📃 ᴀʟʟᴏᴡᴇᴅ sᴍᴀʟʟ ɢʀᴏᴜᴘs ({len(rows)}):</b>", ""]
+    for r in rows:
+        lines.append(f"• <code>{r.get('chat_id')}</code> — {r.get('title') or 'N/A'}")
+    await message.reply_text("\n".join(lines), parse_mode=enums.ParseMode.HTML)
