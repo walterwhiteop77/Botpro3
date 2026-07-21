@@ -104,6 +104,16 @@ FILES_LIMIT = int(environ.get("FREE_FILES", "6"))  # No. of Files User Gets For 
 # file-limit-reached message. The link is:
 # https://t.me/<EXTERNAL_FILE_BOT_USERNAME>?start=getfile-<slugified-search>
 EXTERNAL_FILE_BOT_USERNAME = environ.get('EXTERNAL_FILE_BOT_USERNAME', 'Movie_seriesflixbot')
+
+# ============================
+# Small-Group Auto-Leave
+# ============================
+# When enabled the bot leaves any group whose member count is below
+# MIN_GROUP_MEMBERS at the moment it is added. Admins can allow-list
+# specific groups via /allowgroup so they are exempt.
+LEAVE_SMALL_GROUPS = is_enabled(environ.get('LEAVE_SMALL_GROUPS', "True"), True)
+MIN_GROUP_MEMBERS  = int(environ.get('MIN_GROUP_MEMBERS', '20'))
+
 # ============================
 # Verification Settings
 # ============================
