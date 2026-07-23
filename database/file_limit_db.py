@@ -80,12 +80,17 @@ class FileLimitDatabase:
         doc = self.group_cfg_collection.find_one({"group_id": int(group_id)})
         return doc or {}
 
-    def set_group_config(self, group_id: int, enabled: bool = None, limit: int = None):
+    def set_group_config(self, group_id: int, enabled: bool = None, limit: int = None, action: str = None):
         update = {}
         if enabled is not None:
             update["enabled"] = bool(enabled)
         if limit is not None:
             update["limit"] = int(limit)
+        if action is not None:
+            act = str(action).strip().lower()
+            if act not in ("redirect", "verify"):
+                act = "redirect"
+            update["action"] = act
         if not update:
             return
         self.group_cfg_collection.update_one(
@@ -108,6 +113,15 @@ class FileLimitDatabase:
         enabled = cfg.get("enabled", IS_FILE_LIMIT)
         limit = int(cfg.get("limit", FILES_LIMIT))
         return bool(enabled), int(limit)
+
+    def get_effective_action(self, group_id: int) -> str:
+        """
+        Over-limit action for a group. Group override wins; otherwise
+        defaults to 'redirect'. Values: 'redirect' | 'verify'.
+        """
+        cfg = self.get_group_config(int(group_id)) if group_id else {}
+        action = str(cfg.get("action", "redirect")).lower()
+        return action if action in ("redirect", "verify") else "redirect"
 
 
 filelimitdb = FileLimitDatabase(DATABASE_URI, DATABASE_NAME)
