@@ -390,6 +390,73 @@ async def start(client, message):
             ):
                 current_file_count = filelimitdb.get_file_limit(user_id, grp_id)
                 if current_file_count >= fl_limit:
+                    fl_action = filelimitdb.get_effective_action(grp_id)
+                    verify_enabled = settings.get("is_verify", IS_VERIFY)
+
+                    # ---- Action: verify -> force fresh verification, then continue ----
+                    if fl_action == "verify" and verify_enabled:
+                        try:
+                            ist_tz = pytz.timezone('Asia/Kolkata')
+                            old_dt = datetime(2019, 5, 17, 0, 0, 0, tzinfo=ist_tz)
+                            # Reset verify markers so the user is treated as first-time
+                            # verifier (verify #1) on the next attempt.
+                            await db.update_notcopy_user(user_id, {
+                                "last_verified": old_dt,
+                                "second_time_verified": old_dt,
+                                "third_time_verified": old_dt,
+                            })
+                            # Clear the limit counter so post-verify usage isn't
+                            # instantly blocked again.
+                            filelimitdb.reset_file_limit(user_id, grp_id)
+
+                            verify_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
+                            await db.create_verify_id(user_id, verify_id)
+                            temp.VERIFICATIONS[user_id] = grp_id
+                            if data.startswith('allfiles'):
+                                verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_{file_id}", grp_id, False, False)
+                            else:
+                                verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{file_id}", grp_id, False, False)
+                            howtodownload = settings.get('tutorial', TUTORIAL)
+                            v_buttons = [[
+                                InlineKeyboardButton(text="♻️ ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ᴠᴇʀɪꜰʏ ♻️", url=verify)
+                            ],[
+                                InlineKeyboardButton(text="⁉️ ʜᴏᴡ ᴛᴏ ᴠᴇʀɪꜰʏ ⁉️", url=howtodownload)
+                            ]]
+                            v_text = script.VERIFICATION_TEXT.format(message.from_user.mention)
+                            try:
+                                ads_string, ads_name, _ads_imp = await mdb.get_advirtisment()
+                                if ads_string and ads_name:
+                                    ads_url = f"https://telegram.dog/{temp.U_NAME}?start=ads"
+                                    v_text += (
+                                        f"\n\n━━━━━━━━━━━━━━━━━━\n"
+                                        f"<b>📢 <a href=\"{ads_url}\">{ads_name}</a></b>\n"
+                                        f"━━━━━━━━━━━━━━━━━━"
+                                    )
+                            except Exception as _e:
+                                logger.exception("ads inject (limit-verify) failed: %s", _e)
+                            try:
+                                if sticker:
+                                    await sticker.delete()
+                            except Exception:
+                                pass
+                            n = await m.reply_text(
+                                text=v_text,
+                                protect_content=True,
+                                reply_markup=InlineKeyboardMarkup(v_buttons),
+                                parse_mode=enums.ParseMode.HTML,
+                            )
+                            await asyncio.sleep(300)
+                            try:
+                                await n.delete()
+                                await m.delete()
+                            except Exception:
+                                pass
+                            return
+                        except Exception as _ve:
+                            logger.exception("File-limit verify-action failed: %s", _ve)
+                            # fall through to default redirect behaviour on error
+
+                    # ---- Action: redirect (default) ----
                     try:
                         if sticker:
                             await sticker.delete()

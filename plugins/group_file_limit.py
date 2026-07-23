@@ -37,6 +37,7 @@ async def _is_group_admin(client, message) -> bool:
 def _status_text(grp_id: int) -> str:
     cfg = filelimitdb.get_group_config(grp_id)
     enabled, limit = filelimitdb.get_effective_limit(grp_id)
+    action = filelimitdb.get_effective_action(grp_id)
     if cfg:
         source = "ɢʀᴏᴜᴘ ᴏᴠᴇʀʀɪᴅᴇ"
     else:
@@ -45,11 +46,13 @@ def _status_text(grp_id: int) -> str:
         "<b>📊 ꜰɪʟᴇ ʟɪᴍɪᴛ ꜱᴇᴛᴛɪɴɢꜱ</b>\n\n"
         f"<b>ꜱᴛᴀᴛᴜꜱ:</b> <code>{'ON' if enabled else 'OFF'}</code>\n"
         f"<b>ᴅᴀɪʟʏ ʟɪᴍɪᴛ:</b> <code>{limit}</code>\n"
+        f"<b>ᴏᴠᴇʀ-ʟɪᴍɪᴛ ᴀᴄᴛɪᴏɴ:</b> <code>{action}</code>\n"
         f"<b>ꜱᴏᴜʀᴄᴇ:</b> <code>{source}</code>\n"
         f"<b>ɢʟᴏʙᴀʟ ᴅᴇꜰᴀᴜʟᴛ:</b> <code>{'ON' if IS_FILE_LIMIT else 'OFF'} / {FILES_LIMIT}</code>\n\n"
         "<b>ᴜꜱᴀɢᴇ:</b>\n"
         "<code>/filelimit on|off|default</code>\n"
         "<code>/setfilelimit &lt;number&gt;</code>\n"
+        "<code>/filelimitaction redirect|verify</code>\n"
         "<code>/resetgrouplimit</code>"
     )
 
@@ -145,3 +148,33 @@ async def _grp_resetgrouplimit(client, message):
         await message.reply_text(
             f"<b>❌ ᴇʀʀᴏʀ: {e}</b>", parse_mode=enums.ParseMode.HTML
         )
+
+
+@Client.on_message(filters.command("filelimitaction") & (filters.group | filters.channel))
+async def _grp_filelimit_action(client, message):
+    if not await _is_group_admin(client, message):
+        return await message.reply_text(
+            "<b>❌ ᴏɴʟʏ ɢʀᴏᴜᴘ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴄᴏɴꜰɪɢᴜʀᴇ ᴛʜɪꜱ.</b>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    if len(message.command) < 2:
+        current = filelimitdb.get_effective_action(message.chat.id)
+        return await message.reply_text(
+            "<b>📊 ᴏᴠᴇʀ-ʟɪᴍɪᴛ ᴀᴄᴛɪᴏɴ</b>\n\n"
+            f"<b>ᴄᴜʀʀᴇɴᴛ:</b> <code>{current}</code>\n\n"
+            "<b>ᴜꜱᴀɢᴇ:</b> <code>/filelimitaction redirect|verify</code>\n\n"
+            "• <b>redirect</b> — ꜱʜᴏᴡ ᴅᴏᴡɴʟᴏᴀᴅ-ɴᴏᴡ + ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ʙᴜᴛᴛᴏɴꜱ\n"
+            "• <b>verify</b> — ꜰᴏʀᴄᴇ ᴜꜱᴇʀ ᴛʜʀᴏᴜɢʜ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ᴀɢᴀɪɴ, ᴛʜᴇɴ ᴄᴏɴᴛɪɴᴜᴇ",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    act = message.command[1].strip().lower()
+    if act not in ("redirect", "verify"):
+        return await message.reply_text(
+            "<b>❌ ᴜꜱᴀɢᴇ:</b> <code>/filelimitaction redirect|verify</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    filelimitdb.set_group_config(message.chat.id, action=act)
+    await message.reply_text(
+        f"<b>✅ ᴏᴠᴇʀ-ʟɪᴍɪᴛ ᴀᴄᴛɪᴏɴ ꜱᴇᴛ ᴛᴏ <code>{act}</code> ꜰᴏʀ ᴛʜɪꜱ ɢʀᴏᴜᴘ.</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
